@@ -20,7 +20,7 @@ from .common_gui import (
     scriptdir,
     update_my_data,
     validate_file_path, validate_folder_path, validate_model_path, validate_toml_file,
-    validate_args_setting,
+    validate_args_setting, setup_environment,
 )
 from .class_accelerate_launch import AccelerateLaunch
 from .class_configuration_file import ConfigurationFile
@@ -707,7 +707,7 @@ def train_model(
     if not validate_file_path(log_tracker_config):
         return TRAIN_BUTTON_VISIBLE
     
-    if not validate_folder_path(logging_dir, can_be_written_to=True):
+    if not validate_folder_path(logging_dir, can_be_written_to=True, create_if_not_exists=True):
         return TRAIN_BUTTON_VISIBLE
     
     if LyCORIS_preset not in LYCORIS_PRESETS_CHOICES:
@@ -717,7 +717,7 @@ def train_model(
     if not validate_file_path(network_weights):
         return TRAIN_BUTTON_VISIBLE
     
-    if not validate_folder_path(output_dir, can_be_written_to=True):
+    if not validate_folder_path(output_dir, can_be_written_to=True, create_if_not_exists=True):
         return TRAIN_BUTTON_VISIBLE
     
     if not validate_model_path(pretrained_model_name_or_path):
@@ -726,13 +726,13 @@ def train_model(
     if not validate_folder_path(reg_data_dir):
         return TRAIN_BUTTON_VISIBLE
     
-    if not validate_file_path(resume):
+    if not validate_folder_path(resume):
         return TRAIN_BUTTON_VISIBLE
     
     if not validate_folder_path(train_data_dir):
         return TRAIN_BUTTON_VISIBLE
     
-    if not validate_file_path(vae):
+    if not validate_model_path(vae):
         return TRAIN_BUTTON_VISIBLE
     
     #
@@ -920,7 +920,12 @@ def train_model(
     log.info(f"stop_text_encoder_training = {stop_text_encoder_training}")
     log.info(f"lr_warmup_steps = {lr_warmup_steps}")
 
-    run_cmd = [rf'{get_executable_path("accelerate")}', "launch"]
+    accelerate_path = get_executable_path("accelerate")
+    if accelerate_path == "":
+        log.error("accelerate not found")
+        return TRAIN_BUTTON_VISIBLE
+
+    run_cmd = [rf'{accelerate_path}', "launch"]
 
     run_cmd = AccelerateLaunch.run_cmd(
         run_cmd=run_cmd,
@@ -1282,11 +1287,7 @@ def train_model(
         )
 
         # log.info(run_cmd)
-        env = os.environ.copy()
-        env["PYTHONPATH"] = (
-            rf"{scriptdir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
-        )
-        env["TF_ENABLE_ONEDNN_OPTS"] = "0"
+        env = setup_environment()
 
         # Run the command
 

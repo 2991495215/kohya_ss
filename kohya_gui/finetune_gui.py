@@ -19,7 +19,7 @@ from .common_gui import (
     scriptdir,
     update_my_data,
     validate_file_path, validate_folder_path, validate_model_path,
-    validate_args_setting,
+    validate_args_setting, setup_environment,
 )
 from .class_accelerate_launch import AccelerateLaunch
 from .class_configuration_file import ConfigurationFile
@@ -569,16 +569,16 @@ def train_model(
     if not validate_file_path(log_tracker_config):
         return TRAIN_BUTTON_VISIBLE
     
-    if not validate_folder_path(logging_dir, can_be_written_to=True):
+    if not validate_folder_path(logging_dir, can_be_written_to=True, create_if_not_exists=True):
         return TRAIN_BUTTON_VISIBLE
     
-    if not validate_folder_path(output_dir, can_be_written_to=True):
+    if not validate_folder_path(output_dir, can_be_written_to=True, create_if_not_exists=True):
         return TRAIN_BUTTON_VISIBLE
     
     if not validate_model_path(pretrained_model_name_or_path):
         return TRAIN_BUTTON_VISIBLE
     
-    if not validate_file_path(resume):
+    if not validate_folder_path(resume):
         return TRAIN_BUTTON_VISIBLE
     
     #
@@ -628,8 +628,8 @@ def train_model(
                 run_cmd.append(caption_extension)
 
             # Add paths for the image folder and the caption metadata file
-            run_cmd.append(image_folder)
-            run_cmd.append(os.path.join(train_dir, caption_metadata_filename))
+            run_cmd.append(rf"{image_folder}")
+            run_cmd.append(rf"{os.path.join(train_dir, caption_metadata_filename)}")
 
             # Include the full path flag if specified
             if full_path:
@@ -639,13 +639,9 @@ def train_model(
             log.info(" ".join(run_cmd))
 
             # Prepare environment variables
-            env = os.environ.copy()
-            env["PYTHONPATH"] = (
-                rf"{scriptdir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
-            )
-            env["TF_ENABLE_ONEDNN_OPTS"] = "0"
+            env = setup_environment()
 
-            # Execute the command if not in print-only mode
+            # Execute the command if not just for printing
             if not print_only:
                 subprocess.run(run_cmd, env=env)
 
@@ -655,10 +651,10 @@ def train_model(
             run_cmd = [
                 PYTHON,
                 rf"{scriptdir}/sd-scripts/finetune/prepare_buckets_latents.py",
-                image_folder,
-                os.path.join(train_dir, caption_metadata_filename),
-                os.path.join(train_dir, latent_metadata_filename),
-                pretrained_model_name_or_path,
+                rf"{image_folder}",
+                rf"{os.path.join(train_dir, caption_metadata_filename)}",
+                rf"{os.path.join(train_dir, latent_metadata_filename)}",
+                rf"{pretrained_model_name_or_path}",
                 "--batch_size",
                 str(batch_size),
                 "--max_resolution",
@@ -685,11 +681,7 @@ def train_model(
             log.info(" ".join(run_cmd))
 
             # Copy and modify environment variables
-            env = os.environ.copy()
-            env["PYTHONPATH"] = (
-                rf"{scriptdir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
-            )
-            env["TF_ENABLE_ONEDNN_OPTS"] = "0"
+            env = setup_environment()
 
             # Execute the command if not just for printing
             if not print_only:
@@ -741,7 +733,12 @@ def train_model(
         lr_warmup_steps = 0
     log.info(f"lr_warmup_steps = {lr_warmup_steps}")
 
-    run_cmd = [rf'{get_executable_path("accelerate")}', "launch"]
+    accelerate_path = get_executable_path("accelerate")
+    if accelerate_path == "":
+        log.error("accelerate not found")
+        return TRAIN_BUTTON_VISIBLE
+
+    run_cmd = [rf'{accelerate_path}', "launch"]
 
     run_cmd = AccelerateLaunch.run_cmd(
         run_cmd=run_cmd,
@@ -965,11 +962,7 @@ def train_model(
 
         # log.info(run_cmd)
 
-        env = os.environ.copy()
-        env["PYTHONPATH"] = (
-            rf"{scriptdir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
-        )
-        env["TF_ENABLE_ONEDNN_OPTS"] = "0"
+        env = setup_environment()
 
         # Run the command
         executor.execute_command(run_cmd=run_cmd, env=env)

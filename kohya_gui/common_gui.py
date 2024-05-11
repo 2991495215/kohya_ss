@@ -1368,17 +1368,21 @@ def validate_file_path(file_path: str) -> bool:
     return True
 
 
-def validate_folder_path(folder_path: str, can_be_written_to: bool = False) -> bool:
+def validate_folder_path(folder_path: str, can_be_written_to: bool = False, create_if_not_exists: bool = False) -> bool:
     if folder_path == "":
         return True
     msg = f"Validating {folder_path} existence{' and writability' if can_be_written_to else ''}..."
     if not os.path.isdir(folder_path):
-        log.error(f"{msg} FAILED: does not exist")
-        return False
-    if can_be_written_to:
-        if not os.access(folder_path, os.W_OK):
-            log.error(f"{msg} FAILED: is not writable.")
+        if create_if_not_exists:
+            os.makedirs(folder_path)
+            log.info(f"{msg} SUCCESS")
+            return True
+        else:
+            log.error(f"{msg} FAILED: does not exist")
             return False
+    if can_be_written_to and not os.access(folder_path, os.W_OK):
+        log.error(f"{msg} FAILED: is not writable.")
+        return False
     log.info(f"{msg} SUCCESS")
     return True
 
@@ -1420,13 +1424,10 @@ def validate_model_path(pretrained_model_name_or_path: str) -> bool:
         log.info(f"{msg} SUCCESS")
     else:
         # If not one of the default models, check if it's a valid local path
-        if not os.path.exists(pretrained_model_name_or_path):
-            log.error(f"{msg} FAILED: is missing or does not exist")
+        if not validate_file_path(pretrained_model_name_or_path) and not validate_folder_path(pretrained_model_name_or_path):
+            log.info(f"{msg} FAILURE: not a valid file or folder")
             return False
-        log.info(f"{msg} SUCCESS")
-
     return True
-
 
 def is_file_writable(file_path: str) -> bool:
     """
@@ -1486,3 +1487,15 @@ def validate_args_setting(input_string):
             "A valid settings string must consist of one or more key/value pairs formatted as key=value, with no spaces around the equals sign or within the value. Multiple pairs should be separated by a space."
         )
         return False
+
+def setup_environment():
+    env = os.environ.copy()
+    env["PYTHONPATH"] = (
+        fr"{scriptdir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
+    )
+    env["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
+    if os.name == "nt":
+        env["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
+
+    return env
